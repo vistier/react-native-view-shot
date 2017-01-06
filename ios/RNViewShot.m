@@ -1,5 +1,5 @@
 
-#import <React/RNViewShot.h>
+#import "RNViewShot.h"
 #import <AVFoundation/AVFoundation.h>
 #import <React/RCTLog.h>
 #import <React/UIView+React.h>
