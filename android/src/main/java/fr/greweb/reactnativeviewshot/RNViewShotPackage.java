@@ -16,7 +16,6 @@ public class RNViewShotPackage implements ReactPackage {
       return Arrays.<NativeModule>asList(new RNViewShotModule(reactContext));
     }
 
-    @Override
     public List<Class<? extends JavaScriptModule>> createJSModules() {
       return Collections.emptyList();
     }
