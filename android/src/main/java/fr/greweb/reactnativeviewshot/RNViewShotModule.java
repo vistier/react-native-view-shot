@@ -3,7 +3,9 @@ package fr.greweb.reactnativeviewshot;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Environment;
 import android.util.DisplayMetrics;
 import android.view.View;
 
@@ -22,6 +24,9 @@ import com.facebook.react.uimanager.UIManagerModule;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RNViewShotModule extends ReactContextBaseJavaModule {
 
@@ -38,44 +43,61 @@ public class RNViewShotModule extends ReactContextBaseJavaModule {
     }
 
     @Override
+    public Map<String, Object> getConstants() {
+        return Collections.emptyMap();
+    }
+
+    @Override
     public void onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy();
         new CleanTask(getReactApplicationContext()).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
     }
 
     @ReactMethod
-    public void takeSnapshot(int tag, ReadableMap options, Promise promise) {
-        ReactApplicationContext context = getReactApplicationContext();
-        String format = options.hasKey("format") ? options.getString("format") : "png";
-        Bitmap.CompressFormat compressFormat =
-                format.equals("png")
-                        ? Bitmap.CompressFormat.PNG
-                        : format.equals("jpg")||format.equals("jpeg")
-                        ? Bitmap.CompressFormat.JPEG
-                        : format.equals("webm")
-                        ? Bitmap.CompressFormat.WEBP
-                        : null;
-        if (compressFormat == null) {
-            promise.reject(ViewShot.ERROR_UNABLE_TO_SNAPSHOT, "Unsupported image format: "+format+". Try one of: png | jpg | jpeg");
-            return;
+    public void releaseCapture(String uri) {
+        File file = new File(Uri.parse(uri).getPath());
+        if (!file.exists()) return;
+        File parent = file.getParentFile();
+        if (parent.equals(reactContext.getExternalCacheDir()) || parent.equals(reactContext.getCacheDir())) {
+            file.delete();
         }
-        double quality = options.hasKey("quality") ? options.getDouble("quality") : 1.0;
+    }
+
+    @ReactMethod
+    public void captureRef(int tag, ReadableMap options, Promise promise) {
+        ReactApplicationContext context = getReactApplicationContext();
+        String format = options.getString("format");
+        Bitmap.CompressFormat compressFormat =
+          format.equals("jpg")
+          ? Bitmap.CompressFormat.JPEG
+          : format.equals("webm")
+          ? Bitmap.CompressFormat.WEBP
+          : Bitmap.CompressFormat.PNG;
+        double quality = options.getDouble("quality");
         DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
         Integer width = options.hasKey("width") ? (int)(displayMetrics.density * options.getDouble("width")) : null;
         Integer height = options.hasKey("height") ? (int)(displayMetrics.density * options.getDouble("height")) : null;
-        String result = options.hasKey("result") ? options.getString("result") : "file";
+        String result = options.getString("result");
+        Boolean snapshotContentContainer = options.getBoolean("snapshotContentContainer");
         try {
-            String name = options.hasKey("filename") ? options.getString("filename") : null;
-            File tmpFile = "file".equals(result) ? createTempFile(getReactApplicationContext(), format, name) : null;
+            File file = null;
+            if ("tmpfile".equals(result)) {
+              file = createTempFile(getReactApplicationContext(), format);
+            }
             UIManagerModule uiManager = this.reactContext.getNativeModule(UIManagerModule.class);
-            uiManager.addUIBlock(new ViewShot(tag, format, compressFormat, quality, width, height, tmpFile, result, promise));
+            uiManager.addUIBlock(new ViewShot(tag, format, compressFormat, quality, width, height, file, result, snapshotContentContainer,reactContext, getCurrentActivity(), promise));
         }
         catch (Exception e) {
             promise.reject(ViewShot.ERROR_UNABLE_TO_SNAPSHOT, "Failed to snapshot view tag "+tag);
         }
     }
 
-    private static final String TEMP_FILE_PREFIX = "ReactNative_snapshot_image_";
+    @ReactMethod
+    public void captureScreen(ReadableMap options, Promise promise) {
+        captureRef(-1, options, promise);
+    }
+
+    private static final String TEMP_FILE_PREFIX = "ReactNative-snapshot-image";
 
     /**
      * Asynchronous task that cleans up cache dirs (internal and, if available, external) of cropped
@@ -119,7 +141,7 @@ public class RNViewShotModule extends ReactContextBaseJavaModule {
      * Create a temporary file in the cache directory on either internal or external storage,
      * whichever is available and has more free space.
      */
-    private File createTempFile(Context context, String ext, String name)
+    private File createTempFile(Context context, String ext)
             throws IOException {
         File externalCacheDir = context.getExternalCacheDir();
         File internalCacheDir = context.getCacheDir();
@@ -138,12 +160,6 @@ public class RNViewShotModule extends ReactContextBaseJavaModule {
         }
         String suffix = "." + ext;
         File tmpFile = File.createTempFile(TEMP_FILE_PREFIX, suffix, cacheDir);
-        if (name != null) {
-            File renamed = new File(cacheDir, name + suffix);
-            tmpFile.renameTo(renamed);
-            return renamed;
-        }
-
         return tmpFile;
     }
 
