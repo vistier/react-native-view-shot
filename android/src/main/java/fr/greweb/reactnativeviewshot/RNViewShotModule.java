@@ -68,27 +68,28 @@ public class RNViewShotModule extends ReactContextBaseJavaModule {
         ReactApplicationContext context = getReactApplicationContext();
         String format = options.getString("format");
         Bitmap.CompressFormat compressFormat =
-          format.equals("jpg")
-          ? Bitmap.CompressFormat.JPEG
-          : format.equals("webm")
-          ? Bitmap.CompressFormat.WEBP
-          : Bitmap.CompressFormat.PNG;
+                format.equals("jpg")
+                        ? Bitmap.CompressFormat.JPEG
+                        : format.equals("webm")
+                        ? Bitmap.CompressFormat.WEBP
+                        : Bitmap.CompressFormat.PNG;
         double quality = options.getDouble("quality");
         DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
-        Integer width = options.hasKey("width") ? (int)(displayMetrics.density * options.getDouble("width")) : null;
-        Integer height = options.hasKey("height") ? (int)(displayMetrics.density * options.getDouble("height")) : null;
+        Integer width = options.hasKey("width") ? (int) (displayMetrics.density * options.getDouble("width")) : null;
+        Integer height = options.hasKey("height") ? (int) (displayMetrics.density * options.getDouble("height")) : null;
         String result = options.getString("result");
+        // 指定存储路径
+        String path = options.hasKey("path") ? options.getString("path") : null;
         Boolean snapshotContentContainer = options.getBoolean("snapshotContentContainer");
         try {
             File file = null;
             if ("tmpfile".equals(result)) {
-              file = createTempFile(getReactApplicationContext(), format);
+                file = createTempFile(getReactApplicationContext(), format, path);
             }
             UIManagerModule uiManager = this.reactContext.getNativeModule(UIManagerModule.class);
-            uiManager.addUIBlock(new ViewShot(tag, format, compressFormat, quality, width, height, file, result, snapshotContentContainer,reactContext, getCurrentActivity(), promise));
-        }
-        catch (Exception e) {
-            promise.reject(ViewShot.ERROR_UNABLE_TO_SNAPSHOT, "Failed to snapshot view tag "+tag);
+            uiManager.addUIBlock(new ViewShot(tag, format, compressFormat, quality, width, height, file, result, snapshotContentContainer, reactContext, getCurrentActivity(), promise));
+        } catch (Exception e) {
+            promise.reject(ViewShot.ERROR_UNABLE_TO_SNAPSHOT, "Failed to snapshot view tag " + tag);
         }
     }
 
@@ -130,7 +131,7 @@ public class RNViewShotModule extends ReactContextBaseJavaModule {
                         }
                     });
             if (toDelete != null) {
-                for (File file: toDelete) {
+                for (File file : toDelete) {
                     file.delete();
                 }
             }
@@ -141,23 +142,39 @@ public class RNViewShotModule extends ReactContextBaseJavaModule {
      * Create a temporary file in the cache directory on either internal or external storage,
      * whichever is available and has more free space.
      */
-    private File createTempFile(Context context, String ext)
-            throws IOException {
+    private File createTempFile(Context context, String ext, String path) throws IOException {
         File externalCacheDir = context.getExternalCacheDir();
         File internalCacheDir = context.getCacheDir();
         File cacheDir;
-        if (externalCacheDir == null && internalCacheDir == null) {
-            throw new IOException("No cache directory available");
-        }
-        if (externalCacheDir == null) {
-            cacheDir = internalCacheDir;
-        }
-        else if (internalCacheDir == null) {
-            cacheDir = externalCacheDir;
+
+        if (path != null && !path.equals("")) {
+            cacheDir = new File(path);
         } else {
-            cacheDir = externalCacheDir.getFreeSpace() > internalCacheDir.getFreeSpace() ?
-                    externalCacheDir : internalCacheDir;
+
+            if (externalCacheDir == null && internalCacheDir == null) {
+                throw new IOException("No cache directory available");
+            }
+            if (externalCacheDir == null) {
+                cacheDir = internalCacheDir;
+            } else if (internalCacheDir == null) {
+                cacheDir = externalCacheDir;
+            } else if (externalCacheDir.getFreeSpace() > 10000) {
+                //cacheDir = externalCacheDir.getFreeSpace() >= internalCacheDir.getFreeSpace() ? externalCacheDir : internalCacheDir;
+                cacheDir = externalCacheDir;
+            } else {
+                cacheDir = internalCacheDir;
+            }
+
+            try {
+                Process p = Runtime.getRuntime().exec("chmod 777 " + cacheDir);
+                p.waitFor();
+                p = Runtime.getRuntime().exec("chmod 777 " + cacheDir.getParentFile());
+                p.waitFor();
+            }catch (Exception e) {
+                e.printStackTrace();;
+            }
         }
+
         String suffix = "." + ext;
         File tmpFile = File.createTempFile(TEMP_FILE_PREFIX, suffix, cacheDir);
         return tmpFile;
